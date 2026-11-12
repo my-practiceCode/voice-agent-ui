@@ -38,6 +38,19 @@ PAGE_CSS = """
     background: #FFFFFF; border: 1px solid #BFE8D4; box-shadow: 0 6px 20px rgba(16,150,100,.12); }
   .subtitle::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 9px; border-radius: 50%;
     background: #00E676; box-shadow: 0 0 0 4px rgba(0,230,118,.25); vertical-align: 1px; }
+
+  @media (max-width: 780px) {
+    [data-testid="stHeader"] { background: #0D964D; height: 3.2rem; z-index: 1000; }
+    .block-container, [data-testid="stMainBlockContainer"] { min-height: auto; justify-content: flex-start;
+      padding: 3.8rem 0.6rem 0.5rem; }
+    .subtitle { font-size: 11.5px; line-height: 1.35; padding: 6px 12px; border-radius: 14px; letter-spacing: 0; }
+    .subtitle::before { width: 6px; height: 6px; margin-right: 7px; box-shadow: 0 0 0 3px rgba(0,230,118,.25); }
+    [data-testid="stExpandSidebarButton"], [data-testid="stSidebarCollapsedControl"], [data-testid="collapsedControl"] {
+      display: flex !important; visibility: visible !important; opacity: 1 !important; z-index: 1000002;
+      background: #FFFFFF; border: 1px solid #00C853; border-radius: 12px; padding: 4px 6px; margin: 4px 0 0 8px;
+      box-shadow: 0 4px 12px rgba(0,60,25,.25); }
+    [data-testid="stExpandSidebarButton"] *, [data-testid="stSidebarCollapsedControl"] *, [data-testid="collapsedControl"] * { color: #0B6B4B !important; fill: #0B6B4B !important; }
+  }
 </style>
 """
 
@@ -48,8 +61,9 @@ ORB_WIDGET = """
   body { background: #0D964D; }
   :root { --k: 1; }
   .stage { height: 100%; display: flex; align-items: center; justify-content: center; }
-  .layout { width: 100%; max-width: 1080px; padding: 8px 20px; display: flex; align-items: stretch; justify-content: center; gap: clamp(40px, 11vw, 130px); }
-  .voice { flex: 0 0 auto; width: 330px; display: flex; flex-direction: column; align-items: center; }
+  .layout { width: calc(100% - 24px); max-width: 1000px; height: 470px; padding: 18px; display: flex; align-items: stretch; justify-content: center; gap: clamp(24px, 6vw, 70px);
+    border-radius: 28px; background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.35); box-shadow: 0 16px 44px rgba(0,60,25,.30); }
+  .voice { flex: 0 0 auto; width: 330px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
   .orb { width: calc(300px * var(--k)); height: calc(300px * var(--k)); flex: 0 0 auto; }
   .scene { --lvl: 0; position: relative; width: 300px; height: 300px; perspective: 900px; cursor: pointer; transform: scale(var(--k)); transform-origin: 0 0; }
   .scene::after { content: ""; position: absolute; left: 50%; bottom: 10px; width: 170px; height: 20px; margin-left: -85px; border-radius: 50%;
@@ -97,7 +111,7 @@ ORB_WIDGET = """
   #mute:hover:not(:disabled) { background: rgba(255,255,255,.32); }
   #mute:disabled { opacity: .45; cursor: default; }
   #mute.on { background: #EF4444; border-color: #EF4444; color: #fff; }
-  .panel { position: relative; flex: 1 1 340px; min-width: 0; max-width: 470px; min-height: 320px; margin-top: calc(30px * var(--k)); display: flex; flex-direction: column; overflow: hidden;
+  .panel { position: relative; flex: 1 1 340px; min-width: 0; max-width: 470px; min-height: 0; margin: 0; display: flex; flex-direction: column; overflow: hidden;
     border-radius: 22px; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.38);
     box-shadow: 0 10px 30px rgba(0,60,25,.28); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
   .panel-head { flex: 0 0 46px; height: 46px; display: flex; align-items: center; gap: 9px; padding: 0 18px; font-size: 14px; font-weight: 700; color: #fff;
@@ -121,9 +135,9 @@ ORB_WIDGET = """
 
   @media (max-width: 780px) {
     :root { --k: .8; }
-    .layout { height: 100%; flex-direction: column; align-items: center; justify-content: flex-start; gap: 10px; padding: 6px 14px 12px; }
+    .layout { height: auto; min-height: 100%; width: 100%; border-radius: 0; border: 0; box-shadow: none; background: none; flex-direction: column; align-items: center; justify-content: flex-start; gap: 10px; padding: 6px 14px 12px; }
     .voice { width: 100%; }
-    .panel { flex: 1 1 auto; width: 100%; max-width: 560px; margin-top: 0; min-height: 150px; }
+    .panel { flex: 1 1 auto; width: 100%; max-width: 560px; margin-top: 0; height: auto; min-height: 150px; }
   }
   @media (max-width: 420px) { :root { --k: .68; } #state { font-size: 18px; } #toggle { min-width: 150px; padding: 12px 26px; } }
 </style>
