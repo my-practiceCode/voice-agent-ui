@@ -1,1 +1,10 @@
 streamlit
+livekit
+pydantic
+livekit-agents
+livekit-plugins-groq
+livekit-plugins-openai
+livekit-plugins-silero
+livekit-api
+livekit-plugins-langchain
+pydantic-settings

@@ -1,253 +1,276 @@
+import base64
 import json
+import sys
+import uuid
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import streamlit as st
-import streamlit.components.v1 as components
+from livekit import api
+from config import settings
+from clients import CLIENTS, LANGUAGES
 
-st.set_page_config(
-    page_title="IICI Voice Assistant",
-    page_icon="💚",
-    layout="centered",
-    initial_sidebar_state="collapsed",
-)
+# Put your logo image next to this file and name it logo.png
+LOGO_PATH = Path(__file__).resolve().parent / "logo.png"
 
-TOKEN_ENDPOINT = "https://voice-bot-demo-kdk2.onrender.com/token"
+PAGE_CSS = """
+<style>
+  .stApp { background: #0D964D; }
+  .stApp::before { content: ""; position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 999;
+    background: linear-gradient(90deg, #00E676, #00C853, #BEF264); }
+  [data-testid="stSidebar"] { background: #FFFFFF; border-right: 1px solid #D6EEE3; box-shadow: 4px 0 24px rgba(16,120,85,.06); }
+  [data-testid="stSidebar"] label, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] p,
+  [data-testid="stSidebar"] span { color: #0B2E22; }
+  [data-testid="stSidebar"] .stCaption, [data-testid="stSidebar"] .stCaption * { color: #5C7A6D; }
+  [data-testid="stSidebar"] button { background: #FFFFFF; color: #0B6B4B; border: 1px solid #00C853; border-radius: 12px; font-weight: 600; }
+  [data-testid="stSidebar"] button:hover { background: linear-gradient(135deg, #00E676, #00C853); color: #04210F; border-color: transparent; }
+  [data-testid="stHeader"] { background: transparent; }
+  [data-testid="stAppDeployButton"], [data-testid="stDecoration"], #MainMenu, footer { display: none; visibility: hidden; }
+  .block-container, [data-testid="stMainBlockContainer"] { box-sizing: border-box; min-height: 100vh; max-width: 720px;
+    padding-top: 1rem; padding-bottom: 1rem; display: flex; flex-direction: column; justify-content: center; }
+  [data-testid="stVerticalBlock"] { width: 100%; align-items: stretch; }
+  [data-testid="stElementContainer"]:has(.subtitle), .element-container:has(.subtitle),
+  [data-testid="stMarkdown"]:has(.subtitle), [data-testid="stMarkdownContainer"]:has(.subtitle) { width: 100% !important; max-width: 100% !important; text-align: center; }
+  p.subtitle { margin: 0 auto 4px !important; }
+  .subtitle { display: table; max-width: 100%; margin: 0 auto 4px; padding: 8px 20px 8px 16px; border-radius: 999px; text-align: center;
+    color: #0B4A35; font-size: 13px; font-weight: 600; letter-spacing: .02em;
+    background: #FFFFFF; border: 1px solid #BFE8D4; box-shadow: 0 6px 20px rgba(16,150,100,.12); }
+  .subtitle::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 9px; border-radius: 50%;
+    background: #00E676; box-shadow: 0 0 0 4px rgba(0,230,118,.25); vertical-align: 1px; }
+</style>
+"""
 
-st.markdown(
-    """
-    <style>
-      #MainMenu, footer, header { visibility: hidden; }
-      .block-container { max-width: 850px; padding-top: 1.5rem; }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-APP_HTML = r"""
-<!doctype html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+ORB_WIDGET = """
 <style>
   * { box-sizing: border-box; }
-  body {
-    margin: 0; min-height: 680px; color: #effcf5;
-    background: radial-gradient(ellipse at 50% 20%, #20ed8b20, transparent 42%), #07100d;
-    font: 15px/1.5 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
-  }
-  .card {
-    min-height: 660px; padding: 28px 20px; margin: auto;
-    display: flex; flex-direction: column; align-items: center; text-align: center;
-    border: 1px solid #a6dcbf24; border-radius: 26px;
-    background: linear-gradient(160deg, #11231bf5, #070f0bf5);
-    box-shadow: 0 24px 80px #0006;
-  }
-  .brand { display:flex; align-items:center; gap:10px; margin-bottom:22px; }
-  .brand svg { width:38px; color:#20ed8b; filter:drop-shadow(0 0 10px #20ed8b66); }
-  .brand-title { text-align:left; font-size:12px; font-weight:800; letter-spacing:.18em; }
-  .brand-sub { text-align:left; color:#91a99c; font-size:11px; }
-  .eyebrow { color:#a4ffd0; font-size:11px; font-weight:750; letter-spacing:.16em; text-transform:uppercase; }
-  h1 { margin:9px 0; font-size:clamp(29px, 6vw, 44px); letter-spacing:-.045em; line-height:1.08; }
-  .intro { max-width:430px; margin:4px 0; color:#91a99c; }
+  html, body { height: 100%; margin: 0; padding: 0; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; color: #0B2E22; overflow: hidden; }
+  body { background: #0D964D; }
+  .stage { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .scene { --lvl: 0; position: relative; width: 300px; height: 300px; perspective: 900px; cursor: pointer; }
+  .scene::after { content: ""; position: absolute; left: 50%; bottom: 10px; width: 170px; height: 20px; margin-left: -85px; border-radius: 50%;
+    background: radial-gradient(ellipse at center, rgba(2,70,30,.5) 0%, rgba(2,70,30,.22) 45%, rgba(2,70,30,0) 72%); filter: blur(5px); }
+  .ring { position: absolute; inset: 0; margin: auto; width: 250px; height: 250px; border-radius: 50%; border: 2px solid transparent; opacity: 0; }
+  .scene.user .ring { border-color: #3B82F6; animation: pulse 2s ease-out infinite; }
+  .scene.ai .ring { border-color: #FFFFFF; animation: pulse 2s ease-out infinite; }
+  .ring.r2 { animation-delay: .65s !important; }
+  .ring.r3 { animation-delay: 1.3s !important; }
+  @keyframes pulse { 0% { transform: scale(1); opacity: .7; } 100% { transform: scale(1.2); opacity: 0; } }
 
-  .orb { position:relative; isolation:isolate; display:grid; place-items:center;
-         width:min(330px, 74vw); aspect-ratio:1; margin:14px 0 2px; perspective:900px; }
-  .glow { position:absolute; inset:18%; border-radius:50%; background:#12b8662b; filter:blur(38px); transition:.4s; }
-  .shell {
-    position:absolute; inset:14%; border-radius:50%;
-    background:radial-gradient(circle at 34% 26%, #16452f, #0c2118 46%, #050c09);
-    box-shadow:inset -15px -18px 34px #000b, inset 8px 9px 24px #51ffa41f, 0 0 55px #20ed8b24;
-  }
-  .ring { position:absolute; inset:7%; border:1px solid #20ed8b66; border-radius:50%; opacity:0; transform:scale(.8); }
-  .ring.second { inset:0; }
-  .logo3d { position:relative; width:65%; aspect-ratio:400/380; transform-style:preserve-3d; animation:float 5s ease-in-out infinite; }
-  .logo3d svg {
-    position:absolute; inset:0; width:100%; height:100%; fill:none; stroke:currentColor;
-    stroke-width:18; stroke-linejoin:miter; stroke-linecap:butt;
-  }
-  .logo3d svg:nth-child(1) { color:#075332; transform:translateZ(-20px); }
-  .logo3d svg:nth-child(2) { color:#087343; transform:translateZ(-15px); }
-  .logo3d svg:nth-child(3) { color:#0a9254; transform:translateZ(-10px); }
-  .logo3d svg:nth-child(4) { color:#0db765; transform:translateZ(-5px); }
-  .logo3d svg:nth-child(5) { color:#18d77c; }
-  .logo3d svg:nth-child(6) { color:#47ff9d; transform:translateZ(5px); filter:drop-shadow(0 0 9px #20ed8b99); }
-  .orb[data-state="connecting"] .logo3d { animation:spin 3s linear infinite; }
-  .orb[data-state="listening"] .ring, .orb[data-state="speaking"] .ring { animation:pulse 2s ease-out infinite; }
-  .orb[data-state="speaking"] .ring.second { animation-delay:1s; }
-  .orb[data-state="speaking"] .logo3d { animation:beat .55s ease-in-out infinite alternate; }
-  .orb[data-state="speaking"] .glow { transform:scale(1.3); }
-  @keyframes float { 50% { transform:translateY(-7px) rotateY(5deg); } }
-  @keyframes spin { to { transform:rotateY(360deg); } }
-  @keyframes beat { to { transform:scale(1.08) rotateY(8deg); } }
-  @keyframes pulse { to { opacity:0; transform:scale(1.35); } }
+  .float, .spin, .tilt { position: absolute; inset: 0; transform-style: preserve-3d; }
+  .float { animation: float 4s ease-in-out infinite alternate; }
+  @keyframes float { from { transform: translateY(3px); } to { transform: translateY(-5px); } }
+  .scene.think .spin { animation: turn 2.6s linear infinite; }
+  .scene.ai .spin { animation: sway 1.7s ease-in-out infinite alternate; }
+  @keyframes turn { to { transform: rotateY(360deg); } }
+  @keyframes sway { from { transform: rotateY(-14deg); } to { transform: rotateY(14deg); } }
+  .tilt { transition: transform .15s ease-out; }
 
-  .language { display:grid; gap:6px; margin:0 0 13px; text-align:left; }
-  .language label { color:#91a99c; font-size:11px; font-weight:750; letter-spacing:.12em; text-transform:uppercase; }
-  select {
-    min-width:215px; padding:10px 13px; color:#effcf5; background:#102019;
-    border:1px solid #a6dcbf26; border-radius:12px; font:inherit;
-  }
-  .status { min-height:28px; display:flex; align-items:center; gap:9px; color:#a4ffd0; font-weight:650; }
-  .dot { width:8px; height:8px; border-radius:50%; background:#718078; }
-  .dot.connected, .dot.listening, .dot.speaking { background:#20ed8b; box-shadow:0 0 0 5px #20ed8b20; }
-  .dot.connecting { background:#ffc96b; }
-  .dot.error { background:#ff7575; }
-  button {
-    min-width:220px; margin-top:15px; padding:13px 22px; border:0; border-radius:999px;
-    color:#032012; font:inherit; font-weight:800; cursor:pointer;
-    background:linear-gradient(135deg,#5dffad,#16cf73); box-shadow:0 10px 32px #20ed8b33;
-  }
-  button.end { color:white; background:linear-gradient(135deg,#ef7777,#c73e4e); }
-  button:disabled { opacity:.65; cursor:wait; }
-  .hint { max-width:390px; margin:12px 0 0; color:#91a99c; font-size:12px; }
-  #audio { position:fixed; left:-10px; width:1px; height:1px; overflow:hidden; }
-  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation:none !important; } }
+  .glass { position: absolute; left: 50%; top: 50%; width: 240px; height: 240px; margin: -120px 0 0 -120px; border-radius: 50%;
+    transform: translateZ(-14px);
+    background: radial-gradient(circle at 30% 25%, #17956B 0%, #0A4A36 42%, #04211A 100%);
+    border: 3px solid #FFFFFF;
+    box-shadow: inset 0 0 18px rgba(16,185,129,.25), 0 6px 14px rgba(4,60,40,.35), 0 0 calc(2px + var(--lvl) * 14px) rgba(4,60,40,.4); }
+  .scene.user .glass { box-shadow: inset 0 0 18px rgba(59,130,246,.3), 0 6px 14px rgba(4,60,40,.35), 0 0 calc(2px + var(--lvl) * 14px) rgba(30,64,175,.4); }
+  .stack { position: absolute; inset: 0; transform-style: preserve-3d; }
+  .slice { position: absolute; left: 50%; top: 50%; width: 190px; height: 190px; margin: -95px 0 0 -95px; pointer-events: none; }
+  .slice.front { filter: drop-shadow(0 0 6px rgba(0,230,118,.55)); }
+  .gloss { position: absolute; left: 50%; top: 50%; width: 240px; height: 240px; margin: -120px 0 0 -120px; border-radius: 50%; transform: translateZ(14px);
+    background: radial-gradient(circle at 28% 22%, rgba(255,255,255,.26) 0%, rgba(255,255,255,0) 40%); pointer-events: none; }
+
+  #state { margin-top: 4px; font-size: 21px; font-weight: 700; letter-spacing: .01em;
+    background: linear-gradient(90deg, #FFFFFF, #D9FBE8); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  #sub { margin-top: 3px; font-size: 13px; color: #D9FBE8; }
+  .controls { position: relative; display: flex; justify-content: center; align-items: center; margin-top: 16px; }
+  #mute { position: absolute; left: 100%; margin-left: 12px; }
+  #toggle { min-width: 168px; text-align: center; border: 0; border-radius: 999px; padding: 13px 34px; font-size: 15px; font-weight: 700; color: #04210F; cursor: pointer;
+    background: linear-gradient(135deg, #00E676, #00C853); box-shadow: 0 8px 20px rgba(0,60,25,.35), 0 0 0 2px rgba(255,255,255,.6); transition: transform .15s, box-shadow .15s; }
+  #toggle:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 12px 26px rgba(0,60,25,.4), 0 0 0 2px rgba(255,255,255,.85); }
+  #toggle.end { background: linear-gradient(135deg, #F87171, #EF4444); box-shadow: 0 8px 22px rgba(239,68,68,.35); }
+  #toggle:disabled { opacity: .6; cursor: default; }
+  #mute { width: 46px; height: 46px; border-radius: 50%; border: 1px solid rgba(255,255,255,.55); background: rgba(255,255,255,.18); color: #fff; font-size: 18px; cursor: pointer;
+    box-shadow: 0 4px 14px rgba(0,60,25,.25); transition: background .15s;
+  #mute:hover:not(:disabled) { background: rgba(255,255,255,.32); }
+  #mute:disabled { opacity: .45; cursor: default; }
+  #mute.on { background: #EF4444; border-color: #EF4444; color: #fff; }
 </style>
-</head>
-<body>
-<svg aria-hidden="true" style="position:absolute;width:0;height:0">
-  <symbol id="mark" viewBox="0 0 400 380">
-    <path d="M162 48V90H200 M192 56H240V92H272 M90 92H132V125H172 M302 92V135H268
-      M92 120V168 M232 122V165H195 M125 160H165V195 M340 160H300V190H265
-      M55 160V200H100 M135 195H92 M232 195V235H275 M338 195V235H300V268
-      M55 232H100 M125 232V275H90V300 M160 232H200V268 M195 262V300H232
-      M232 262H265V300H305 M125 300H165V335H200"/>
-  </symbol>
-</svg>
 
-<main class="card">
-  <div class="brand">
-    <svg viewBox="0 0 400 380"><use href="#mark"></use></svg>
-    <div><div class="brand-title">IICI VOICE</div><div class="brand-sub">A thoughtful clinic assistant</div></div>
+<div class="stage">
+  <div class="scene" id="scene">
+    <div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div>
+    <div class="float"><div class="spin"><div class="tilt" id="tilt">
+      <div class="glass"></div>
+      <div class="stack" id="stack"></div>
+      <div class="gloss"></div>
+    </div></div></div>
   </div>
-  <div class="eyebrow">IICI Clinic · Islamabad</div>
-  <h1>Care, in your language.</h1>
-  <p class="intro">Talk naturally with the clinic’s voice assistant.</p>
-
-  <div class="orb" id="orb" data-state="idle" aria-hidden="true">
-    <span class="glow"></span><span class="ring"></span><span class="ring second"></span><span class="shell"></span>
-    <div class="logo3d">
-      <svg viewBox="0 0 400 380"><use href="#mark"></use></svg>
-      <svg viewBox="0 0 400 380"><use href="#mark"></use></svg>
-      <svg viewBox="0 0 400 380"><use href="#mark"></use></svg>
-      <svg viewBox="0 0 400 380"><use href="#mark"></use></svg>
-      <svg viewBox="0 0 400 380"><use href="#mark"></use></svg>
-      <svg viewBox="0 0 400 380"><use href="#mark"></use></svg>
-    </div>
+  <div id="state">Tap to start</div>
+  <div id="sub"></div>
+  <div class="controls">
+    <button id="toggle">Start call</button>
+    <button id="mute" disabled title="Mute microphone">&#127908;</button>
   </div>
-
-  <div class="language">
-    <label for="language">Conversation language</label>
-    <select id="language">
-      <option value="en">English</option>
-      <option value="ur">اردو (Urdu)</option>
-      <option value="id">Bahasa Indonesia</option>
-    </select>
-  </div>
-  <div class="status" aria-live="polite">
-    <span class="dot" id="dot"></span><span id="status">Ready to connect</span>
-  </div>
-  <button id="call" type="button">Start conversation</button>
-  <p class="hint">Allow microphone access when prompted. You can ask the assistant to switch languages during the call.</p>
   <div id="audio"></div>
-</main>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.min.js"></script>
 <script>
-  const TOKEN_ENDPOINT = __TOKEN_ENDPOINT__;
   const { Room, RoomEvent, Track } = LivekitClient;
-  const button = document.getElementById("call");
-  const language = document.getElementById("language");
-  const statusText = document.getElementById("status");
-  const dot = document.getElementById("dot");
-  const orb = document.getElementById("orb");
-  const audio = document.getElementById("audio");
-  let room = null;
+  const LANGS = __LANGS__;
+  const current = __LANGUAGE__;
+  const LOGO = "__LOGO__";
+  const scene = document.getElementById("scene");
+  const tilt = document.getElementById("tilt");
+  const stack = document.getElementById("stack");
+  const stateEl = document.getElementById("state");
+  const subEl = document.getElementById("sub");
+  const btn = document.getElementById("toggle");
+  const muteBtn = document.getElementById("mute");
+  let room = null, muted = false, last = "";
 
-  function setStatus(text, state) {
-    statusText.textContent = text;
-    dot.className = "dot " + state;
-    orb.dataset.state = state;
+  subEl.textContent = "Speaking: " + (LANGS[current] || current);
+
+  function setState(cls, text) {
+    scene.className = "scene " + cls;
+    stateEl.textContent = text;
   }
 
-  function resetCall(text) {
-    room = null;
-    audio.replaceChildren();
-    button.disabled = false;
-    button.textContent = "Start conversation";
-    button.classList.remove("end");
-    language.disabled = false;
-    setStatus(text, "idle");
-  }
-
-  button.addEventListener("click", async () => {
-    if (room) {
-      const currentRoom = room;
-      button.disabled = true;
-      setStatus("Ending conversation…", "connecting");
-      await currentRoom.disconnect();
-      resetCall("Call ended");
-      return;
-    }
-
-    button.disabled = true;
-    language.disabled = true;
-    button.textContent = "Connecting…";
-    setStatus("Connecting to the assistant…", "connecting");
-
-    let newRoom = null;
-    try {
-      const query = new URLSearchParams({ client_id: "iici", language: language.value });
-      const response = await fetch(TOKEN_ENDPOINT + "?" + query.toString());
-      if (!response.ok) throw new Error("Token service returned HTTP " + response.status);
-
-      const session = await response.json();
-      if (!session.token || !session.url) throw new Error("Token response is missing the LiveKit URL or token.");
-
-      newRoom = new Room({ adaptiveStream: true, dynacast: true });
-      room = newRoom;
-
-      newRoom.on(RoomEvent.TrackSubscribed, (track) => {
-        if (track.kind === Track.Kind.Audio) {
-          const element = track.attach();
-          element.autoplay = true;
-          element.playsInline = true;
-          audio.appendChild(element);
+  // Turn the logo's white background into transparency and recolor it, so it can be stacked into a 3D extrusion.
+  function buildLogo() {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const size = 400, c = document.createElement("canvas");
+        c.width = c.height = size;
+        const x = c.getContext("2d");
+        x.drawImage(img, 0, 0, size, size);
+        const d = x.getImageData(0, 0, size, size), p = d.data;
+        for (let i = 0; i < p.length; i += 4) {
+          const r = p[i], g = p[i + 1], a = p[i + 3];
+          if (a < 250) continue;
+          if (g > r + 40) { p[i] = 0; p[i + 1] = 230; p[i + 2] = 118; p[i + 3] = Math.max(0, Math.min(255, 255 - r)); }
+          else p[i + 3] = 0;
         }
-      });
-      newRoom.on(RoomEvent.TrackUnsubscribed, (track) => track.detach().forEach((element) => element.remove()));
+        x.putImageData(d, 0, 0);
+        resolve(c.toDataURL("image/png"));
+      };
+      img.src = LOGO;
+    });
+  }
 
-      newRoom.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
-        const agentSpeaking = speakers.some((speaker) => speaker.identity !== newRoom.localParticipant.identity);
-        const userSpeaking = speakers.some((speaker) => speaker.identity === newRoom.localParticipant.identity);
-        if (agentSpeaking) setStatus("Assistant speaking", "speaking");
-        else if (userSpeaking) setStatus("Listening to you", "listening");
-        else setStatus("Connected · speak when ready", "connected");
-      });
-
-      newRoom.on(RoomEvent.Disconnected, () => {
-        if (room === newRoom) resetCall("Call ended");
-      });
-
-      await newRoom.connect(session.url, session.token);
-      await newRoom.localParticipant.setMicrophoneEnabled(true);
-      button.disabled = false;
-      button.textContent = "End conversation";
-      button.classList.add("end");
-      setStatus("Connected · speak when ready", "connected");
-    } catch (error) {
-      if (newRoom) {
-        room = null;
-        try { await newRoom.disconnect(); }
-        catch (disconnectError) { console.error("Disconnect failed:", disconnectError); }
-      }
-      resetCall(error instanceof Error ? error.message : "Could not connect.");
+  buildLogo().then((url) => {
+    const N = 12;
+    for (let i = 0; i < N; i++) {
+      const im = document.createElement("img");
+      im.src = url;
+      im.className = "slice" + (i === N - 1 ? " front" : "");
+      im.style.transform = "translateZ(" + ((i - N / 2) * 2) + "px)";
+      if (i < N - 1) im.style.filter = "brightness(" + (0.3 + 0.6 * i / (N - 1)) + ")";
+      stack.appendChild(im);
     }
   });
+
+  document.addEventListener("mousemove", (e) => {
+    const x = e.clientX / window.innerWidth - 0.5, y = e.clientY / window.innerHeight - 0.5;
+    tilt.style.transform = "rotateX(" + (-y * 10) + "deg) rotateY(" + (x * 12) + "deg)";
+  });
+  document.addEventListener("mouseleave", () => { tilt.style.transform = "rotateX(0deg) rotateY(0deg)"; });
+
+  setInterval(() => {
+    if (!room) { scene.style.setProperty("--lvl", 0); return; }
+    let lvl = room.localParticipant.audioLevel || 0;
+    room.remoteParticipants.forEach((p) => { lvl = Math.max(lvl, p.audioLevel || 0); });
+    scene.style.setProperty("--lvl", Math.min(1, lvl * 2).toFixed(2));
+  }, 80);
+
+  scene.onclick = () => { if (!room) btn.click(); };
+
+  muteBtn.onclick = async () => {
+    if (!room) return;
+    muted = !muted;
+    await room.localParticipant.setMicrophoneEnabled(!muted);
+    muteBtn.classList.toggle("on", muted);
+  };
+
+  btn.onclick = async () => {
+    if (room) return room.disconnect();
+    btn.disabled = true;
+    setState("think", "Connecting...");
+    try {
+      room = new Room();
+      room.on(RoomEvent.TrackSubscribed, (track) => {
+        if (track.kind === Track.Kind.Audio) document.getElementById("audio").appendChild(track.attach());
+      });
+      room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
+        if (speakers.some((s) => !s.isLocal)) { last = "ai"; setState("ai live", "Speaking"); }
+        else if (speakers.length) { last = "user"; setState("user live", "Listening to you"); }
+        else if (last === "user") { setState("think live", "Thinking..."); }
+        else setState("live", "Ready - say something");
+      });
+      room.on(RoomEvent.Disconnected, () => {
+        room = null; last = ""; muted = false;
+        btn.textContent = "Start call"; btn.className = "";
+        muteBtn.disabled = true; muteBtn.classList.remove("on");
+        setState("", "Call ended - tap to start again");
+      });
+      await room.connect(__URL__, __TOKEN__);
+      await room.localParticipant.setMicrophoneEnabled(true);
+      await room.localParticipant.setAttributes({ language: current });
+      btn.textContent = "End call"; btn.className = "end";
+      muteBtn.disabled = false;
+      setState("live", "Ready - say something");
+    } catch (error) {
+      room = null;
+      setState("", "Error: " + error.message);
+    }
+    btn.disabled = false;
+  };
 </script>
-</body>
-</html>
 """
 
-APP_HTML = APP_HTML.replace("__TOKEN_ENDPOINT__", json.dumps(TOKEN_ENDPOINT))
-components.html(APP_HTML, height=720, scrolling=False)
+
+def create_session(client_id: str, language: str) -> dict:
+    session_id = uuid.uuid4().hex[:8]
+    room = f"{client_id}__{language}__{session_id}"
+    identity = f"user-{session_id}"
+    token = (
+        api.AccessToken(settings.livekit_api_key, settings.livekit_api_secret)
+        .with_identity(identity)
+        .with_attributes({"language": language})
+        .with_grants(api.VideoGrants(room_join=True, room=room, can_update_own_metadata=True))
+        .to_jwt()
+    )
+    return {"client_id": client_id, "language": language, "room": room, "token": token, "identity": identity}
+
+
+st.set_page_config(page_title="AI Voice Assistant", layout="centered", initial_sidebar_state="expanded")
+st.markdown(PAGE_CSS, unsafe_allow_html=True)
+
+if not LOGO_PATH.exists():
+    st.error(f"Save your logo image as {LOGO_PATH} and reload.")
+    st.stop()
+logo_uri = "data:image/png;base64," + base64.b64encode(LOGO_PATH.read_bytes()).decode()
+
+with st.sidebar:
+    st.header("Voice settings")
+    client_id = st.selectbox("Business", list(CLIENTS), format_func=CLIENTS.get)
+    language = st.radio("Speaking language", list(LANGUAGES), format_func=LANGUAGES.get)
+    new_session = st.button("New session", width="stretch")
+
+current = st.session_state.get("session", {})
+if new_session or (current.get("client_id"), current.get("language")) != (client_id, language):
+    st.session_state.session = create_session(client_id, language)
+session = st.session_state.session
+
+with st.sidebar:
+    st.caption(f"Room: {session['room']}")
+
+st.markdown(f"<p class='subtitle'>Talking to the assistant for {CLIENTS[client_id]}</p>", unsafe_allow_html=True)
+st.iframe(
+    ORB_WIDGET.replace("__URL__", json.dumps(settings.livekit_url))
+    .replace("__TOKEN__", json.dumps(session["token"]))
+    .replace("__LANGS__", json.dumps(LANGUAGES))
+    .replace("__LANGUAGE__", json.dumps(session["language"]))
+    .replace("__LOGO__", logo_uri),
+    height=500,
+)
